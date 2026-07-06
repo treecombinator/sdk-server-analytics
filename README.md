@@ -34,10 +34,10 @@ analytics.track({ name: "purchase", props: { sku: "book-01", amount: 49.9 }, ind
 An `AnalyticsEvent` is `{ name, props?, index? }`:
 
 - `name` — the event name, e.g. `"signup"`, `"purchase"`.
-- `props` — arbitrary properties. Each entry is split by value type: numbers become metrics (Analytics Engine `doubles`), everything else becomes a `key=value` label (`blobs`).
-- `index` — an optional index for fast filtering at query time (e.g. the user or club id).
+- `props` — arbitrary properties. Each entry is split by value type: numbers become metrics (Analytics Engine `doubles`), everything else becomes a `key=value` label (`blobs`). Keys are iterated sorted, so the same event shape always lands numbers in the same double columns, and a `doubles=<key,key,...>` blob records which key each column holds.
+- `index` — an optional index for fast filtering at query time (e.g. the user or tenant id).
 
 ## Notes
 
 - The dataset binding is declared structurally via `@cloudflare/workers-types` (`AnalyticsEngineDataset`) — pass the Workers Analytics Engine binding from your environment.
-- `track` is fire-and-forget and never throws; there is no provider to configure beyond the dataset.
+- `track` is fire-and-forget and never throws; Analytics Engine's per-point limits (20 blobs, 20 doubles, ~5KB of blob data, 96-byte index) are enforced by capping/truncating the write instead of erroring.

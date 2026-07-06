@@ -7,7 +7,7 @@ export interface AnalyticsEvent {
   name: string;
   /** Arbitrary props: strings become labels, numbers become metrics. */
   props?: Record<string, string | number>;
-  /** Optional index for fast filtering at query time (e.g. the user/club id). */
+  /** Optional index for fast filtering at query time (e.g. the user/tenant id). */
   index?: string;
 }
 
