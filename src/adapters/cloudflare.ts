@@ -19,11 +19,26 @@ function truncateBytes(value: string, maxBytes: number): string {
   return out;
 }
 
-function capBlobs(blobs: string[]): string[] {
-  const out: string[] = [];
+/**
+ * Caps the write to the Analytics Engine blob limits. The doubles mapping is only meaningful
+ * whole — a cut key would claim the wrong column — so it goes right after the name and is
+ * included in full or not at all; labels then fill whatever count and byte budget remain.
+ */
+function capBlobs(name: string, mapping: string | undefined, labels: string[]): string[] {
   let budget = MAX_BLOB_BYTES;
-  for (const blob of blobs.slice(0, MAX_BLOBS)) {
-    const trimmed = truncateBytes(blob, budget);
+  const cappedName = truncateBytes(name, budget);
+  budget -= encoder.encode(cappedName).length;
+  const out: string[] = [cappedName];
+  if (mapping !== undefined) {
+    const size = encoder.encode(mapping).length;
+    if (size <= budget) {
+      out.push(mapping);
+      budget -= size;
+    }
+  }
+  for (const label of labels) {
+    if (out.length >= MAX_BLOBS) break;
+    const trimmed = truncateBytes(label, budget);
     if (!trimmed) break;
     out.push(trimmed);
     budget -= encoder.encode(trimmed).length;
@@ -34,26 +49,30 @@ function capBlobs(blobs: string[]): string[] {
 export function createCloudflareAnalytics(config: CloudflareAnalyticsConfig): Analytics {
   return {
     track(event: AnalyticsEvent) {
-      const blobs: string[] = [event.name];
+      const labels: string[] = [];
       const doubles: number[] = [];
+      const doubleKeys: string[] = [];
       if (event.props) {
         // Doubles are positional in Analytics Engine: iterate keys sorted so the same event
         // shape always lands numbers in the same columns, and record which key each column is.
-        const doubleKeys: string[] = [];
+        // Numeric props beyond the doubles cap are dropped, so the mapping names exactly the
+        // columns written.
         for (const key of Object.keys(event.props).sort()) {
           const value = event.props[key]!;
           if (typeof value === "number") {
-            doubleKeys.push(key);
-            doubles.push(value);
+            if (doubles.length < MAX_DOUBLES) {
+              doubleKeys.push(key);
+              doubles.push(value);
+            }
           } else {
-            blobs.push(`${key}=${value}`);
+            labels.push(`${key}=${value}`);
           }
         }
-        if (doubleKeys.length > 0) blobs.push(`doubles=${doubleKeys.join(",")}`);
       }
+      const mapping = doubleKeys.length > 0 ? `doubles=${doubleKeys.join(",")}` : undefined;
       config.dataset.writeDataPoint({
-        blobs: capBlobs(blobs),
-        doubles: doubles.slice(0, MAX_DOUBLES),
+        blobs: capBlobs(event.name, mapping, labels),
+        doubles,
         indexes: event.index ? [truncateBytes(event.index, MAX_INDEX_BYTES)] : [],
       });
     },
